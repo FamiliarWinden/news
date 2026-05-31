@@ -1,0 +1,13 @@
+{
+  "editions": [
+    {
+      "date": "2026-05-31",
+      "generatedAt": "2026-05-31T10:33:00.131Z",
+      "itemCount": 62,
+      "aiCount": 18,
+      "politicsCount": 14,
+      "chinaCount": 30,
+      "path": "data/daily/2026-05-31.json"
+    }
+  ]
+}

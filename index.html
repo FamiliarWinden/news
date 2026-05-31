@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>今日时政、AI 前沿与中国热文</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <div class="brand-block">
+        <p class="eyebrow">Daily Briefing</p>
+        <h1>今日时政、AI 前沿与中国热文</h1>
+      </div>
+      <div class="header-actions">
+        <span id="updatedAt">等待数据</span>
+        <button id="refreshButton" type="button" title="重新载入本地新闻数据">刷新</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero" aria-labelledby="lead-title">
+        <div class="hero-copy">
+          <p class="section-label">今日主线</p>
+          <h2 id="lead-title">正在读取今日合集</h2>
+          <p id="lead-summary">运行 npm run update 后，这里会展示当天热度最高的时政、AI 前沿或中国平台热文。</p>
+          <div class="hero-links">
+            <a id="lead-link" class="primary-link" href="#" target="_blank" rel="noreferrer">查看原文</a>
+            <span id="editionDate" class="edition-date">今日合集</span>
+          </div>
+        </div>
+        <div class="metrics" aria-label="今日合集概览">
+          <div>
+            <span id="totalCount">0</span>
+            <small>条入选</small>
+          </div>
+          <div>
+            <span id="politicsCount">0</span>
+            <small>时政</small>
+          </div>
+          <div>
+            <span id="aiCount">0</span>
+            <small>AI 科技</small>
+          </div>
+          <div>
+            <span id="chinaCount">0</span>
+            <small>中国热文</small>
+          </div>
+        </div>
+      </section>
+
+      <section class="daily-strip" aria-label="每日合集">
+        <div>
+          <p class="section-label">Archive</p>
+          <h2>每日新闻合集</h2>
+        </div>
+        <div id="editionList" class="edition-list"></div>
+      </section>
+
+      <section class="china-zone" aria-labelledby="china-title">
+        <div class="section-heading">
+          <p class="section-label">China Pulse</p>
+          <h2 id="china-title">中国新闻与平台热文专区</h2>
+        </div>
+        <div id="chinaList" class="china-list" aria-live="polite"></div>
+      </section>
+
+      <section class="controls" aria-label="新闻筛选">
+        <label>
+          <span>主题</span>
+          <select id="topicFilter">
+            <option value="all">全部主题</option>
+            <option value="AI科技">AI 科技</option>
+            <option value="时政">时政</option>
+            <option value="中国热文">中国热文</option>
+          </select>
+        </label>
+        <label>
+          <span>地区</span>
+          <select id="regionFilter">
+            <option value="all">全部地区</option>
+          </select>
+        </label>
+        <label>
+          <span>关键词</span>
+          <input id="searchInput" type="search" placeholder="搜索标题、摘要、来源、平台" />
+        </label>
+        <label>
+          <span>排序</span>
+          <select id="sortSelect">
+            <option value="hot">热度优先</option>
+            <option value="new">最新优先</option>
+            <option value="ai">AI 优先</option>
+            <option value="china">中国热文优先</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="content-grid">
+        <div>
+          <div class="section-heading">
+            <p class="section-label">Briefing</p>
+            <h2>精选要闻</h2>
+          </div>
+          <div id="newsList" class="news-list" aria-live="polite"></div>
+        </div>
+
+        <aside class="side-panel">
+          <div>
+            <p class="section-label">AI Radar</p>
+            <h3>AI 前沿观察</h3>
+            <div id="aiRadar" class="radar-list"></div>
+          </div>
+          <div>
+            <p class="section-label">平台来源</p>
+            <div id="platformList" class="source-list"></div>
+          </div>
+          <div>
+            <p class="section-label">热词</p>
+            <div id="keywordList" class="keyword-list"></div>
+          </div>
+          <div>
+            <p class="section-label">媒体来源</p>
+            <div id="sourceList" class="source-list"></div>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <footer>
+      <span>数据来自公开 RSS、公开热榜和可访问平台接口。中文摘要由本地规则生成，请以原文为准。</span>
+    </footer>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "daily-world-news-page",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/update-news.mjs",
+    "update": "node scripts/update-news.mjs",
+    "serve": "node scripts/serve.mjs"
+  }
+}
