@@ -1,6 +1,15 @@
 {
   "editions": [
     {
+      "date": "2026-06-01",
+      "generatedAt": "2026-06-01T14:34:27.711Z",
+      "itemCount": 52,
+      "aiCount": 18,
+      "politicsCount": 14,
+      "chinaCount": 20,
+      "path": "data/daily/2026-06-01.json"
+    },
+    {
       "date": "2026-05-31",
       "generatedAt": "2026-05-31T10:33:00.131Z",
       "itemCount": 62,

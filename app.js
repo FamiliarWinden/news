@@ -2,6 +2,7 @@ const state = {
   items: [],
   meta: null,
   editions: [],
+  currentPath: "data/news.json",
   topic: "all",
   region: "all",
   query: "",
@@ -11,7 +12,7 @@ const state = {
 const TOPICS = {
   ai: "AI科技",
   politics: "时政",
-  china: "中国热文"
+  china: "中国热榜"
 };
 
 const elements = {
@@ -38,11 +39,15 @@ const elements = {
   sourceList: document.querySelector("#sourceList")
 };
 
-async function loadNews(path = "data/news.json") {
+async function loadNews(path = state.currentPath, { userRefresh = false } = {}) {
+  state.currentPath = path;
+  setRefreshState(userRefresh ? "刷新中..." : null);
+
   try {
+    const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const [newsPayload, archivePayload] = await Promise.all([
-      fetchJson(`${path}?ts=${Date.now()}`),
-      fetchJson(`data/archive.json?ts=${Date.now()}`).catch(() => ({ editions: [] }))
+      fetchJson(`${path}?refresh=${stamp}`),
+      fetchJson(`data/archive.json?refresh=${stamp}`).catch(() => ({ editions: [] }))
     ]);
 
     state.items = newsPayload.items ?? [];
@@ -50,16 +55,34 @@ async function loadNews(path = "data/news.json") {
     state.editions = archivePayload.editions ?? [];
     populateRegions();
     render();
-  } catch (error) {
-    elements.newsList.innerHTML = `<div class="empty">没有读到新闻数据。请在项目目录运行 <strong>npm run update</strong> 后刷新页面。</div>`;
+    if (userRefresh) flashRefreshSuccess();
+  } catch {
+    elements.newsList.innerHTML = `<div class="empty">没有读到新闻数据。请稍后重试，或等待每日自动更新完成。</div>`;
     elements.updatedAt.textContent = "暂无数据";
+  } finally {
+    setRefreshState(null);
   }
 }
 
 async function fetchJson(url) {
-  const response = await fetch(url);
+  const response = await fetch(url, { cache: "no-store" });
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   return response.json();
+}
+
+function setRefreshState(text) {
+  if (!text) {
+    elements.refreshButton.textContent = "刷新数据";
+    elements.refreshButton.classList.remove("is-loading");
+    return;
+  }
+  elements.refreshButton.textContent = text;
+  elements.refreshButton.classList.add("is-loading");
+}
+
+function flashRefreshSuccess() {
+  const latest = state.meta?.generatedAt ? formatDateTime(state.meta.generatedAt) : "最新数据";
+  elements.updatedAt.textContent = `已刷新 · ${latest}`;
 }
 
 function populateRegions() {
@@ -75,19 +98,19 @@ function populateRegions() {
 
 function getFilteredItems() {
   const query = state.query.trim().toLowerCase();
-  const filtered = state.items.filter((item) => {
-    const matchesTopic = state.topic === "all" || item.topic === state.topic;
-    const matchesRegion = state.region === "all" || item.region === state.region;
-    const text = `${item.title} ${item.summary} ${item.source} ${item.platform} ${item.keywords?.join(" ")}`.toLowerCase();
-    return matchesTopic && matchesRegion && (!query || text.includes(query));
-  });
-
-  return filtered.sort((a, b) => {
-    if (state.sort === "new") return new Date(b.publishedAt) - new Date(a.publishedAt);
-    if (state.sort === "ai") return topicWeight(b, TOPICS.ai) - topicWeight(a, TOPICS.ai) || b.score - a.score;
-    if (state.sort === "china") return topicWeight(b, TOPICS.china) - topicWeight(a, TOPICS.china) || b.score - a.score;
-    return b.score - a.score || new Date(b.publishedAt) - new Date(a.publishedAt);
-  });
+  return state.items
+    .filter((item) => {
+      const matchesTopic = state.topic === "all" || item.topic === state.topic;
+      const matchesRegion = state.region === "all" || item.region === state.region;
+      const text = `${item.title} ${item.summary} ${item.source} ${item.platform} ${item.keywords?.join(" ")}`.toLowerCase();
+      return matchesTopic && matchesRegion && (!query || text.includes(query));
+    })
+    .sort((a, b) => {
+      if (state.sort === "new") return new Date(b.publishedAt) - new Date(a.publishedAt);
+      if (state.sort === "ai") return topicWeight(b, TOPICS.ai) - topicWeight(a, TOPICS.ai) || b.score - a.score;
+      if (state.sort === "china") return topicWeight(b, TOPICS.china) - topicWeight(a, TOPICS.china) || b.score - a.score;
+      return b.score - a.score || new Date(b.publishedAt) - new Date(a.publishedAt);
+    });
 }
 
 function topicWeight(item, topic) {
@@ -101,9 +124,7 @@ function render() {
   const politicsItems = state.items.filter((item) => item.topic === TOPICS.politics);
   const chinaItems = state.items.filter((item) => item.topic === TOPICS.china);
 
-  elements.updatedAt.textContent = state.meta?.generatedAt
-    ? `更新于 ${formatDateTime(state.meta.generatedAt)}`
-    : "暂无更新时间";
+  elements.updatedAt.textContent = state.meta?.generatedAt ? `更新于 ${formatDateTime(state.meta.generatedAt)}` : "暂无更新时间";
   elements.editionDate.textContent = state.meta?.date ? `${state.meta.date} 合集` : "今日合集";
   elements.totalCount.textContent = state.items.length.toString();
   elements.politicsCount.textContent = politicsItems.length.toString();
@@ -117,7 +138,7 @@ function render() {
     elements.leadLink.style.visibility = "visible";
   } else {
     elements.leadTitle.textContent = "暂无新闻数据";
-    elements.leadSummary.textContent = "运行 npm run update 生成当天新闻后，这里会展示最高热度的时政、AI 或中国平台热文。";
+    elements.leadSummary.textContent = "等待每日自动任务生成最新合集。";
     elements.leadLink.style.visibility = "hidden";
   }
 
@@ -132,9 +153,7 @@ function render() {
 
 function chooseLead(items) {
   if (!items.length) return state.items[0];
-  const aiLead = items.find((item) => item.topic === TOPICS.ai && item.score >= 70);
-  const chinaLead = items.find((item) => item.topic === TOPICS.china && item.score >= 80);
-  return aiLead ?? chinaLead ?? items[0];
+  return items.find((item) => item.topic === TOPICS.ai && item.score >= 70) ?? items[0];
 }
 
 function renderEditions() {
@@ -146,32 +165,26 @@ function renderEditions() {
   elements.editionList.innerHTML = state.editions
     .slice(0, 7)
     .map((edition) => {
-      const active = edition.date === state.meta?.date ? " active" : "";
+      const active = edition.path === state.currentPath || edition.date === state.meta?.date ? " active" : "";
       return `<button class="edition-pill${active}" type="button" data-path="${escapeAttribute(edition.path)}">${escapeHtml(edition.date)} · ${edition.itemCount}</button>`;
     })
     .join("");
 }
 
 function renderChinaZone(items) {
-  const platforms = ["哔哩哔哩", "今日头条", "百度"];
-  const groups = platforms
+  const groups = ["哔哩哔哩", "百度"]
     .map((platform) => ({
       platform,
-      items: items
-        .filter((item) => item.platform === platform)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, 10)
+      items: items.filter((item) => item.platform === platform).sort((a, b) => b.score - a.score).slice(0, 10)
     }))
     .filter((group) => group.items.length);
 
   if (!groups.length) {
-    elements.chinaList.innerHTML = `<div class="empty">暂未抓到中国平台热文。公开平台接口可能临时需要登录或风控。</div>`;
+    elements.chinaList.innerHTML = `<div class="empty">暂未抓到中国平台热榜。公开接口可能临时需要登录或风控。</div>`;
     return;
   }
 
-  elements.chinaList.innerHTML = groups
-    .map((group) => renderChinaGroup(group.platform, group.items))
-    .join("");
+  elements.chinaList.innerHTML = groups.map((group) => renderChinaGroup(group.platform, group.items)).join("");
 }
 
 function renderChinaGroup(platform, items) {
@@ -180,7 +193,7 @@ function renderChinaGroup(platform, items) {
     <section class="china-rank">
       <div class="rank-heading">
         <h3>${escapeHtml(platform)}榜前十</h3>
-        <span>${isBilibili ? "热门视频" : "实时热文"}</span>
+        <span>${isBilibili ? "视频预览" : "搜索热榜"}</span>
       </div>
       <div class="${isBilibili ? "bili-preview-grid" : "rank-list"}">
         ${items.map((item, index) => (isBilibili ? renderBiliPreview(item, index) : renderRankRow(item, index))).join("")}
@@ -194,7 +207,7 @@ function renderBiliPreview(item, index) {
     <a class="bili-preview" href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer" aria-label="打开 B 站视频：${escapeAttribute(item.title)}">
       <div class="video-thumb">
         ${item.thumbnail ? `<img src="${escapeAttribute(item.thumbnail)}" alt="${escapeAttribute(item.title)}" decoding="async" />` : `<span class="thumb-fallback">暂无封面</span>`}
-        <span class="play-mark">播放</span>
+        <span class="play-mark">PLAY</span>
         <strong>${index + 1}</strong>
       </div>
       <div class="bili-copy">
@@ -250,11 +263,7 @@ function renderNewsList(items) {
 }
 
 function renderAiRadar(items) {
-  const radarItems = items
-    .slice()
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5);
-
+  const radarItems = items.slice().sort((a, b) => b.score - a.score).slice(0, 5);
   if (!radarItems.length) {
     elements.aiRadar.innerHTML = `<p class="muted-text">今天暂未抓到足够明确的 AI 前沿新闻。</p>`;
     return;
@@ -273,23 +282,15 @@ function renderAiRadar(items) {
 }
 
 function renderPlatforms(items) {
-  renderCountList(
-    elements.platformList,
-    items.map((item) => item.platform).filter(Boolean)
-  );
+  renderCountList(elements.platformList, items.map((item) => item.platform).filter(Boolean));
 }
 
 function renderKeywords(items) {
-  const values = [];
-  for (const item of items) values.push(...(item.keywords ?? []));
-  renderCountList(elements.keywordList, values, 20);
+  renderCountList(elements.keywordList, items.flatMap((item) => item.keywords ?? []), 20);
 }
 
 function renderSources(items) {
-  renderCountList(
-    elements.sourceList,
-    items.map((item) => item.source).filter(Boolean)
-  );
+  renderCountList(elements.sourceList, items.map((item) => item.source).filter(Boolean));
 }
 
 function renderCountList(container, values, limit = 30) {
@@ -323,7 +324,7 @@ function escapeAttribute(value = "") {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
-elements.refreshButton.addEventListener("click", () => loadNews());
+elements.refreshButton.addEventListener("click", () => loadNews(state.currentPath, { userRefresh: true }));
 elements.topicFilter.addEventListener("change", (event) => {
   state.topic = event.target.value;
   render();
@@ -342,7 +343,7 @@ elements.sortSelect.addEventListener("change", (event) => {
 });
 elements.editionList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-path]");
-  if (button) loadNews(button.dataset.path);
+  if (button) loadNews(button.dataset.path, { userRefresh: true });
 });
 
 loadNews();
