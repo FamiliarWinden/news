@@ -34,11 +34,16 @@ const offTopicTerms = ["champions league", "premier league", "football", "soccer
 
 async function main() {
   await mkdir(thumbsDir, { recursive: true });
+  const previousChinaItems = await readPreviousChinaItems();
   const feedBatches = await Promise.allSettled(feeds.map(fetchFeed));
   const chinaBatches = await Promise.allSettled([fetchBilibiliPopular(), fetchBaiduHot()]);
+  const fetchedChinaItems = chinaBatches.flatMap((result) => (result.status === "fulfilled" ? result.value : []));
+  const chinaItems = fetchedChinaItems.filter((item) => item.topic === "中国热榜").length >= 10
+    ? fetchedChinaItems
+    : previousChinaItems;
   const rawItems = [
     ...feedBatches.flatMap((result) => (result.status === "fulfilled" ? result.value : [])),
-    ...chinaBatches.flatMap((result) => (result.status === "fulfilled" ? result.value : []))
+    ...chinaItems
   ];
   const items = selectBalancedItems(scoreItems(dedupe(rawItems.filter(isRelevantNews))));
   const payload = {
@@ -58,6 +63,15 @@ async function main() {
   await writeFile(dailyPath, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
   await updateArchive(payload);
   console.log(`Wrote ${items.length} focused news items to ${currentPath}`);
+}
+
+async function readPreviousChinaItems() {
+  try {
+    const payload = JSON.parse(await readFile(currentPath, "utf8"));
+    return (payload.items ?? []).filter((item) => item.topic === "中国热榜");
+  } catch {
+    return [];
+  }
 }
 
 async function fetchFeed(feed) {
