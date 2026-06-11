@@ -4,9 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>今日时政、AI 前沿与中国热榜</title>
-    <link rel="stylesheet" href="styles.css?v=20260601a" />
+    <link rel="stylesheet" href="styles.css?v=20260611a" />
   </head>
   <body>
+    <canvas id="particleCanvas" aria-hidden="true"></canvas>
+    <div id="cursorHalo" class="cursor-halo" aria-hidden="true">
+      <span>SIGNAL</span><span>BRIEF</span><span>LIVE</span><span>AI</span>
+    </div>
+
     <header class="site-header">
       <div class="brand-block">
         <p class="eyebrow">Signal Brief</p>
@@ -14,7 +19,7 @@
       </div>
       <div class="header-actions">
         <span id="updatedAt">等待数据</span>
-        <button id="refreshButton" type="button" title="重新拉取最新线上数据">刷新数据</button>
+        <button id="refreshButton" type="button" title="重新读取最新线上数据">刷新数据</button>
       </div>
     </header>
 
@@ -34,6 +39,18 @@
           <div><span id="politicsCount">0</span><small>时政</small></div>
           <div><span id="aiCount">0</span><small>AI 科技</small></div>
           <div><span id="chinaCount">0</span><small>中国热榜</small></div>
+        </div>
+      </section>
+
+      <section class="refresh-console" aria-live="polite">
+        <div>
+          <p class="section-label">Live Refresh</p>
+          <h2>刷新实况</h2>
+        </div>
+        <div id="refreshStatus" class="refresh-status">
+          <span>等待刷新</span>
+          <span>数据源：GitHub Pages</span>
+          <span>部署状态：未查询</span>
         </div>
       </section>
 
@@ -116,9 +133,9 @@
     </main>
 
     <footer>
-      <span>数据来自公开 RSS、公开热榜和可访问平台接口。刷新按钮会重新读取最新已发布数据；每日定时任务会自动生成新合集。</span>
+      <span>数据来自公开 RSS、公开热榜和可访问平台接口。刷新按钮会实时读取最新已发布数据，并显示部署与读取结果。</span>
     </footer>
 
-    <script src="app.js?v=20260601a" type="module"></script>
+    <script src="app.js?v=20260611a" type="module"></script>
   </body>
 </html>

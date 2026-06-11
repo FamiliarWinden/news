@@ -9,15 +9,13 @@ const state = {
   sort: "hot"
 };
 
-const TOPICS = {
-  ai: "AI科技",
-  politics: "时政",
-  china: "中国热榜"
-};
+const TOPICS = { ai: "AI科技", politics: "时政", china: "中国热榜" };
+const WORKFLOW_API = "https://api.github.com/repos/FamiliarWinden/news/actions/workflows/pages.yml/runs?per_page=1&branch=main";
 
 const elements = {
   updatedAt: document.querySelector("#updatedAt"),
   refreshButton: document.querySelector("#refreshButton"),
+  refreshStatus: document.querySelector("#refreshStatus"),
   leadTitle: document.querySelector("#lead-title"),
   leadSummary: document.querySelector("#lead-summary"),
   leadLink: document.querySelector("#lead-link"),
@@ -41,13 +39,18 @@ const elements = {
 
 async function loadNews(path = state.currentPath, { userRefresh = false } = {}) {
   state.currentPath = path;
-  setRefreshState(userRefresh ? "刷新中..." : null);
+  const startedAt = performance.now();
+  if (userRefresh) {
+    setRefreshState("刷新中...");
+    updateRefreshStatus(["正在请求最新 JSON", "正在读取部署状态", "请稍候"]);
+  }
 
   try {
     const stamp = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const [newsPayload, archivePayload] = await Promise.all([
+    const [newsPayload, archivePayload, workflowPayload] = await Promise.all([
       fetchJson(`${path}?refresh=${stamp}`),
-      fetchJson(`data/archive.json?refresh=${stamp}`).catch(() => ({ editions: [] }))
+      fetchJson(`data/archive.json?refresh=${stamp}`).catch(() => ({ editions: [] })),
+      fetchWorkflowStatus().catch(() => null)
     ]);
 
     state.items = newsPayload.items ?? [];
@@ -55,10 +58,19 @@ async function loadNews(path = state.currentPath, { userRefresh = false } = {}) 
     state.editions = archivePayload.editions ?? [];
     populateRegions();
     render();
-    if (userRefresh) flashRefreshSuccess();
+
+    const duration = Math.round(performance.now() - startedAt);
+    const completedAt = new Date().toISOString();
+    updateRefreshStatus([
+      `本次读取完成：${duration}ms`,
+      `读取时刻：${formatFullDateTime(completedAt)}`,
+      `数据生成：${state.meta?.generatedAt ? formatFullDateTime(state.meta.generatedAt) : "未知"}`,
+      workflowPayload ? `最近部署：${formatWorkflow(workflowPayload)}` : "最近部署：GitHub API 暂限流"
+    ]);
   } catch {
     elements.newsList.innerHTML = `<div class="empty">没有读到新闻数据。请稍后重试，或等待每日自动更新完成。</div>`;
     elements.updatedAt.textContent = "暂无数据";
+    updateRefreshStatus(["刷新失败", "未能读取数据文件", "请稍后重试"]);
   } finally {
     setRefreshState(null);
   }
@@ -70,19 +82,29 @@ async function fetchJson(url) {
   return response.json();
 }
 
-function setRefreshState(text) {
-  if (!text) {
-    elements.refreshButton.textContent = "刷新数据";
-    elements.refreshButton.classList.remove("is-loading");
-    return;
-  }
-  elements.refreshButton.textContent = text;
-  elements.refreshButton.classList.add("is-loading");
+async function fetchWorkflowStatus() {
+  const response = await fetch(`${WORKFLOW_API}&t=${Date.now()}`, {
+    cache: "no-store",
+    headers: { Accept: "application/vnd.github+json" }
+  });
+  if (!response.ok) throw new Error(`workflow ${response.status}`);
+  const payload = await response.json();
+  return payload.workflow_runs?.[0] ?? null;
 }
 
-function flashRefreshSuccess() {
-  const latest = state.meta?.generatedAt ? formatDateTime(state.meta.generatedAt) : "最新数据";
-  elements.updatedAt.textContent = `已刷新 · ${latest}`;
+function formatWorkflow(run) {
+  if (!run) return "未找到运行记录";
+  const status = run.status === "completed" ? run.conclusion || "completed" : run.status;
+  return `${status} · ${formatFullDateTime(run.updated_at || run.created_at)}`;
+}
+
+function setRefreshState(text) {
+  elements.refreshButton.textContent = text || "刷新数据";
+  elements.refreshButton.classList.toggle("is-loading", Boolean(text));
+}
+
+function updateRefreshStatus(lines) {
+  elements.refreshStatus.innerHTML = lines.map((line) => `<span>${escapeHtml(line)}</span>`).join("");
 }
 
 function populateRegions() {
@@ -152,8 +174,7 @@ function render() {
 }
 
 function chooseLead(items) {
-  if (!items.length) return state.items[0];
-  return items.find((item) => item.topic === TOPICS.ai && item.score >= 70) ?? items[0];
+  return items.find((item) => item.topic === TOPICS.ai && item.score >= 70) ?? items[0] ?? state.items[0];
 }
 
 function renderEditions() {
@@ -161,7 +182,6 @@ function renderEditions() {
     elements.editionList.innerHTML = `<span class="edition-pill active">今日</span>`;
     return;
   }
-
   elements.editionList.innerHTML = state.editions
     .slice(0, 7)
     .map((edition) => {
@@ -183,7 +203,6 @@ function renderChinaZone(items) {
     elements.chinaList.innerHTML = `<div class="empty">暂未抓到中国平台热榜。公开接口可能临时需要登录或风控。</div>`;
     return;
   }
-
   elements.chinaList.innerHTML = groups.map((group) => renderChinaGroup(group.platform, group.items)).join("");
 }
 
@@ -237,29 +256,28 @@ function renderNewsList(items) {
     elements.newsList.innerHTML = `<div class="empty">没有匹配的新闻。</div>`;
     return;
   }
+  elements.newsList.innerHTML = items.map(renderNewsCard).join("");
+}
 
-  elements.newsList.innerHTML = items
-    .map(
-      (item) => `
-        <article class="news-card ${item.topic === TOPICS.ai ? "ai-card" : ""} ${item.topic === TOPICS.china ? "china-news-card" : ""}">
-          <header>
-            <div class="badges">
-              <span class="badge">${escapeHtml(item.topic || "新闻")}</span>
-              <span class="badge muted">${escapeHtml(item.region || "全球")}</span>
-              ${item.contentType ? `<span class="badge muted">${escapeHtml(item.contentType)}</span>` : ""}
-            </div>
-            <span class="score">热度 ${Math.round(item.score)}</span>
-          </header>
-          <h3>${escapeHtml(item.title)}</h3>
-          <p>${escapeHtml(item.summary)}</p>
-          <div class="card-footer">
-            <span>${escapeHtml(item.platform || item.source)} · ${formatDateTime(item.publishedAt)}</span>
-            <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">阅读原文</a>
-          </div>
-        </article>
-      `
-    )
-    .join("");
+function renderNewsCard(item) {
+  return `
+    <article class="news-card ${item.topic === TOPICS.ai ? "ai-card" : ""} ${item.topic === TOPICS.china ? "china-news-card" : ""}">
+      <header>
+        <div class="badges">
+          <span class="badge">${escapeHtml(item.topic || "新闻")}</span>
+          <span class="badge muted">${escapeHtml(item.region || "全球")}</span>
+          ${item.contentType ? `<span class="badge muted">${escapeHtml(item.contentType)}</span>` : ""}
+        </div>
+        <span class="score">热度 ${Math.round(item.score)}</span>
+      </header>
+      <h3>${escapeHtml(item.title)}</h3>
+      <p>${escapeHtml(item.summary)}</p>
+      <div class="card-footer">
+        <span>${escapeHtml(item.platform || item.source)} · ${formatDateTime(item.publishedAt)}</span>
+        <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">阅读原文</a>
+      </div>
+    </article>
+  `;
 }
 
 function renderAiRadar(items) {
@@ -268,16 +286,13 @@ function renderAiRadar(items) {
     elements.aiRadar.innerHTML = `<p class="muted-text">今天暂未抓到足够明确的 AI 前沿新闻。</p>`;
     return;
   }
-
   elements.aiRadar.innerHTML = radarItems
-    .map(
-      (item) => `
-        <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
-          <span>${escapeHtml(item.title)}</span>
-          <small>${escapeHtml(item.source)} · ${Math.round(item.score)}</small>
-        </a>
-      `
-    )
+    .map((item) => `
+      <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">
+        <span>${escapeHtml(item.title)}</span>
+        <small>${escapeHtml(item.source)} · ${Math.round(item.score)}</small>
+      </a>
+    `)
     .join("");
 }
 
@@ -305,11 +320,18 @@ function renderCountList(container, values, limit = 30) {
 
 function formatDateTime(value) {
   if (!value) return "未知时间";
+  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(value));
+}
+
+function formatFullDateTime(value) {
+  if (!value) return "未知时间";
   return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",
-    minute: "2-digit"
+    minute: "2-digit",
+    second: "2-digit"
   }).format(new Date(value));
 }
 
@@ -324,26 +346,127 @@ function escapeAttribute(value = "") {
   return escapeHtml(value).replace(/`/g, "&#96;");
 }
 
+function initCursorEffects() {
+  const halo = document.querySelector("#cursorHalo");
+  const spans = [...halo.querySelectorAll("span")];
+  const pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2, tx: window.innerWidth / 2, ty: window.innerHeight / 2 };
+  window.addEventListener("pointermove", (event) => {
+    pointer.tx = event.clientX;
+    pointer.ty = event.clientY;
+    document.documentElement.style.setProperty("--cursor-x", `${event.clientX}px`);
+    document.documentElement.style.setProperty("--cursor-y", `${event.clientY}px`);
+  }, { passive: true });
+
+  function tick() {
+    pointer.x += (pointer.tx - pointer.x) * 0.16;
+    pointer.y += (pointer.ty - pointer.y) * 0.16;
+    halo.style.transform = `translate3d(${pointer.x}px, ${pointer.y}px, 0)`;
+    const now = performance.now() / 1000;
+    spans.forEach((span, index) => {
+      const angle = now * 1.7 + index * (Math.PI * 2 / spans.length);
+      const radius = 42 + Math.sin(now * 2 + index) * 5;
+      span.style.transform = `translate(${Math.cos(angle) * radius}px, ${Math.sin(angle) * radius}px) rotate(${angle + Math.PI / 2}rad)`;
+    });
+    requestAnimationFrame(tick);
+  }
+  tick();
+}
+
+function initParticles() {
+  const canvas = document.querySelector("#particleCanvas");
+  const ctx = canvas.getContext("2d");
+  const pointer = { x: -9999, y: -9999 };
+  let particles = [];
+  let width = 0;
+  let height = 0;
+  let dpr = 1;
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    width = window.innerWidth;
+    height = window.innerHeight;
+    canvas.width = Math.floor(width * dpr);
+    canvas.height = Math.floor(height * dpr);
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const count = Math.min(120, Math.max(54, Math.floor(width * height / 16000)));
+    particles = Array.from({ length: count }, () => ({
+      x: Math.random() * width,
+      y: Math.random() * height,
+      vx: (Math.random() - 0.5) * 0.45,
+      vy: (Math.random() - 0.5) * 0.45,
+      r: Math.random() * 1.8 + 0.8
+    }));
+  }
+
+  window.addEventListener("resize", resize);
+  window.addEventListener("pointermove", (event) => {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+  }, { passive: true });
+  window.addEventListener("pointerleave", () => {
+    pointer.x = -9999;
+    pointer.y = -9999;
+  });
+
+  function animate() {
+    ctx.clearRect(0, 0, width, height);
+    for (const p of particles) {
+      const dx = p.x - pointer.x;
+      const dy = p.y - pointer.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist < 150) {
+        const force = (150 - dist) / 150;
+        p.vx += (dx / Math.max(dist, 1)) * force * 0.035;
+        p.vy += (dy / Math.max(dist, 1)) * force * 0.035;
+      }
+      p.x += p.vx;
+      p.y += p.vy;
+      p.vx *= 0.992;
+      p.vy *= 0.992;
+      if (p.x < -20) p.x = width + 20;
+      if (p.x > width + 20) p.x = -20;
+      if (p.y < -20) p.y = height + 20;
+      if (p.y > height + 20) p.y = -20;
+    }
+
+    for (let i = 0; i < particles.length; i += 1) {
+      const a = particles[i];
+      ctx.beginPath();
+      ctx.fillStyle = "rgba(81, 247, 184, 0.72)";
+      ctx.arc(a.x, a.y, a.r, 0, Math.PI * 2);
+      ctx.fill();
+      for (let j = i + 1; j < particles.length; j += 1) {
+        const b = particles[j];
+        const dist = Math.hypot(a.x - b.x, a.y - b.y);
+        if (dist < 96) {
+          ctx.strokeStyle = `rgba(56, 213, 255, ${0.16 * (1 - dist / 96)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+        }
+      }
+    }
+    requestAnimationFrame(animate);
+  }
+
+  resize();
+  animate();
+}
+
 elements.refreshButton.addEventListener("click", () => loadNews(state.currentPath, { userRefresh: true }));
-elements.topicFilter.addEventListener("change", (event) => {
-  state.topic = event.target.value;
-  render();
-});
-elements.regionFilter.addEventListener("change", (event) => {
-  state.region = event.target.value;
-  render();
-});
-elements.searchInput.addEventListener("input", (event) => {
-  state.query = event.target.value;
-  render();
-});
-elements.sortSelect.addEventListener("change", (event) => {
-  state.sort = event.target.value;
-  render();
-});
+elements.topicFilter.addEventListener("change", (event) => { state.topic = event.target.value; render(); });
+elements.regionFilter.addEventListener("change", (event) => { state.region = event.target.value; render(); });
+elements.searchInput.addEventListener("input", (event) => { state.query = event.target.value; render(); });
+elements.sortSelect.addEventListener("change", (event) => { state.sort = event.target.value; render(); });
 elements.editionList.addEventListener("click", (event) => {
   const button = event.target.closest("button[data-path]");
   if (button) loadNews(button.dataset.path, { userRefresh: true });
 });
 
+initCursorEffects();
+initParticles();
 loadNews();
